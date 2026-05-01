@@ -1,12 +1,20 @@
-import ChatBox from './components/ChatBox'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Chat from './pages/Chat';
+import './App.css';
 
 function App() {
   return (
-    <div className="app">
-      <ChatBox />
-    </div>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/chat" element={<Chat />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { sendMessage } from '../lib/api';
+import { sendMessage, getChatHistory } from '../lib/api';
 
 interface Message {
   id: number;
@@ -12,6 +12,7 @@ export default function ChatBox() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -21,6 +22,41 @@ export default function ChatBox() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load chat history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const history = await getChatHistory();
+        const formattedMessages: Message[] = [];
+
+        history.forEach((chat, index) => {
+          // Add user message
+          formattedMessages.push({
+            id: index * 2,
+            text: chat.message,
+            isUser: true,
+            timestamp: new Date(chat.created_at),
+          });
+          // Add AI response
+          formattedMessages.push({
+            id: index * 2 + 1,
+            text: chat.response,
+            isUser: false,
+            timestamp: new Date(chat.created_at),
+          });
+        });
+
+        setMessages(formattedMessages);
+      } catch (error) {
+        console.error('Error loading chat history:', error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+  }, []);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -78,7 +114,11 @@ export default function ChatBox() {
       </div>
 
       <div className="messages-container">
-        {messages.length === 0 ? (
+        {isLoadingHistory ? (
+          <div className="empty-state">
+            <p>Loading chat history...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="empty-state">
             <p>👋 Hello! Ask me anything.</p>
           </div>
