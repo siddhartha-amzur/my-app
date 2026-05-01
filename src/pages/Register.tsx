@@ -75,8 +75,16 @@ export default function Register() {
                 border: '1px solid #ddd',
                 fontSize: '14px'
               }}
-              placeholder="you@example.com"
+              placeholder="you@amzur.com"
             />
+            <p style={{ 
+              fontSize: '12px', 
+              color: '#999', 
+              marginTop: '4px',
+              fontStyle: 'italic'
+            }}>
+              Only @amzur.com email addresses are allowed
+            </p>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
