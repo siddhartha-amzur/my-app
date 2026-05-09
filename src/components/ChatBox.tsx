@@ -77,7 +77,7 @@ export default function ChatBox() {
       
       const aiMessage: Message = {
         id: Date.now() + 1,
-        text: aiResponse,
+        text: aiResponse.response,
         isUser: false,
         timestamp: new Date(),
       };

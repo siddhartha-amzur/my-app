@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { register } from '../lib/api';
-import '../App.css';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -77,14 +76,10 @@ export default function Register() {
               }}
               placeholder="you@amzur.com"
             />
-            <p style={{ 
-              fontSize: '12px', 
-              color: '#999', 
-              marginTop: '4px',
-              fontStyle: 'italic'
-            }}>
-              Only @amzur.com email addresses are allowed
-            </p>
+          </div>
+
+          <div style={{ marginBottom: '16px', fontSize: '12px', color: '#7a4b12', background: '#fff6e6', borderRadius: '8px', padding: '10px' }}>
+            Registration is restricted to @amzur.com email addresses.
           </div>
 
           <div style={{ marginBottom: '20px' }}>
