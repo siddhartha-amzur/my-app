@@ -311,3 +311,39 @@ export const uploadAttachment = (
 export const getAttachmentUrl = (attachmentId: string): string => {
   return `${API_BASE_URL}/uploads/${attachmentId}`;
 };
+
+// Image Generation API
+
+export interface GenerateImageRequest {
+  prompt: string;
+  thread_id: string;
+}
+
+export interface GenerateImageResponse {
+  message_type: 'image_generation';
+  image_id: string;
+  image_url: string;
+  prompt: string;
+  thread_id: string;
+  message_id: number;
+}
+
+export const generateImage = async (
+  prompt: string,
+  threadId: string,
+): Promise<GenerateImageResponse> => {
+  console.log('[frontend] generateImage request', { prompt, thread_id: threadId });
+
+  const response = await fetch(`${API_BASE_URL}/generate-image`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ prompt, thread_id: threadId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Image generation failed'));
+  }
+
+  return response.json();
+};

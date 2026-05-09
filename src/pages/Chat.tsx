@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import AttachmentPreview, { type PendingAttachment } from '../components/AttachmentPreview';
 import AttachmentStatusBanner from '../components/AttachmentStatusBanner';
 import AttachmentUploader from '../components/AttachmentUploader';
+import ChatMessage from '../components/ChatMessage';
 import {
   createThread,
   deleteThread,
-  getAttachmentUrl,
+  generateImage,
   getThreadMessages,
   getThreads,
   logout,
@@ -14,7 +15,6 @@ import {
   sendMessage,
   updateThread,
   uploadAttachment,
-  type Attachment,
   type Message,
   type Thread,
 } from '../lib/api';
@@ -38,6 +38,11 @@ const SUPPORTED_FILE_EXTENSIONS = new Set([
   'xlsx',
 ]);
 
+/** Simple client-side image generation intent detection (mirrors backend logic). */
+function isImagePrompt(text: string): boolean {
+  return /^\s*(generate|create|draw|make|paint|design|render|produce|show me|give me)\b/i.test(text);
+}
+
 export default function Chat() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
@@ -46,6 +51,7 @@ export default function Chat() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [error, setError] = useState('');
@@ -351,7 +357,47 @@ export default function Chat() {
       return;
     }
 
-    if ((!message && uploadedAttachmentIds.length === 0) || sending) {
+    if ((!message && uploadedAttachmentIds.length === 0) || sending || generatingImage) {
+      return;
+    }
+
+    // Detect image generation intent (no attachments needed)
+    if (message && isImagePrompt(message) && uploadedAttachmentIds.length === 0) {
+      // Ensure a thread exists
+      let threadId = currentThreadId;
+      if (!threadId) {
+        try {
+          const thread = await createThread('New Chat');
+          await loadThreads(thread.id);
+          setCurrentThreadId(thread.id);
+          threadId = thread.id;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create thread');
+          return;
+        }
+      }
+
+      setGeneratingImage(true);
+      setInputValue('');
+
+      try {
+        showToast('🖼️ Generating image...', 'info');
+        await generateImage(message, threadId);
+        await loadThreads(threadId);
+        await loadMessages(threadId);
+        showToast('✅ Image generated successfully!', 'success');
+        setError('');
+      } catch (err) {
+        const messageText = err instanceof Error ? err.message : 'Image generation failed';
+        if (messageText.includes('401')) {
+          navigate('/login');
+          return;
+        }
+        setError(messageText);
+        showToast(`❌ ${messageText}`, 'error');
+      } finally {
+        setGeneratingImage(false);
+      }
       return;
     }
 
@@ -407,7 +453,7 @@ export default function Chat() {
   };
 
   const hasAnyAttachments = pendingAttachments.some((item) => item.status === 'uploading' || item.status === 'uploaded');
-  const canSend = (inputValue.trim().length > 0 || uploadedAttachmentIds.length > 0 || hasAnyAttachments) && !sending;
+  const canSend = (inputValue.trim().length > 0 || uploadedAttachmentIds.length > 0 || hasAnyAttachments) && !sending && !generatingImage;
 
   return (
     <div
@@ -667,64 +713,41 @@ export default function Chat() {
               <p style={{ color: '#687086' }}>Start a new conversation by sending your first message.</p>
             ) : (
               messages.map((item) => (
-                <div key={item.id} style={{ marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
-                    <div
-                      style={{
-                        maxWidth: '74%',
-                        background: 'linear-gradient(135deg, #2f6ed3 0%, #6141c2 100%)',
-                        color: 'white',
-                        borderRadius: '14px',
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                      }}
-                    >
-                      {item.message}
-                      {item.attachments && item.attachments.length > 0 && (
-                        <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {item.attachments.map((attachment: Attachment) => (
-                            <a
-                              key={attachment.id}
-                              href={getAttachmentUrl(attachment.id)}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                background: 'rgba(255,255,255,0.18)',
-                                borderRadius: '999px',
-                                padding: '4px 8px',
-                                color: 'white',
-                                fontSize: '12px',
-                                textDecoration: 'none',
-                              }}
-                            >
-                              {attachment.original_filename}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div
-                      style={{
-                        maxWidth: '74%',
-                        background: 'white',
-                        color: '#1e2538',
-                        borderRadius: '14px',
-                        padding: '10px 12px',
-                        boxShadow: '0 2px 8px rgba(20, 34, 67, 0.08)',
-                        textAlign: 'left',
-                        whiteSpace: 'pre-wrap',
-                      }}
-                    >
-                      {item.response}
-                    </div>
-                  </div>
-                </div>
+                <ChatMessage
+                  key={item.id}
+                  userMessage={item.message}
+                  assistantResponse={item.response}
+                  attachments={item.attachments}
+                />
               ))
             )}
 
-            {sending && (
+            {generatingImage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: '#687086',
+                  fontSize: '13px',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid #c7d7f5',
+                    borderTopColor: '#2f6ed3',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                  }}
+                />
+                Generating image...
+              </div>
+            )}
+
+            {sending && !generatingImage && (
               <div style={{ color: '#687086', textAlign: 'left', fontSize: '13px' }}>Generating response...</div>
             )}
 
@@ -774,19 +797,19 @@ export default function Chat() {
               <button
                 type="button"
                 onClick={onSend}
-                disabled={sending || !canSend}
+                disabled={sending || generatingImage || !canSend}
                 style={{
                   border: 'none',
                   borderRadius: '10px',
                   padding: '0 16px',
-                  background: sending ? '#b8bfd2' : !canSend ? '#b8bfd2' : hasUploadingAttachments ? '#7986cb' : '#2749b3',
+                  background: (sending || generatingImage) ? '#b8bfd2' : !canSend ? '#b8bfd2' : hasUploadingAttachments ? '#7986cb' : '#2749b3',
                   color: 'white',
-                  cursor: sending || !canSend ? 'not-allowed' : 'pointer',
+                  cursor: (sending || generatingImage || !canSend) ? 'not-allowed' : 'pointer',
                   fontWeight: 600,
                   fontSize: '14px',
                 }}
               >
-                {sending ? '...' : hasUploadingAttachments ? '⏳' : 'Send'}
+                {generatingImage ? '🖼️' : sending ? '...' : hasUploadingAttachments ? '⏳' : 'Send'}
               </button>
             </div>
           </div>
