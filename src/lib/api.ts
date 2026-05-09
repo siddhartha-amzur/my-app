@@ -82,6 +82,17 @@ export interface Attachment {
   created_at: string;
 }
 
+export interface Document {
+  id: string;
+  user_id: string;
+  thread_id?: string | null;
+  filename: string;
+  original_filename: string;
+  mime_type: string;
+  processing_status: 'uploading' | 'processing' | 'completed' | 'failed';
+  created_at: string;
+}
+
 // Auth API
 export const register = async (data: RegisterData): Promise<UserResponse> => {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -346,4 +357,56 @@ export const generateImage = async (
   }
 
   return response.json();
+};
+
+export const listDocuments = async (threadId?: string): Promise<Document[]> => {
+  const query = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : '';
+  const response = await fetch(`${API_BASE_URL}/documents${query}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to load documents'));
+  }
+
+  return response.json();
+};
+
+export const uploadDocument = (
+  file: File,
+  threadId: string,
+  onProgress?: (progress: number) => void,
+): Promise<Document> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('thread_id', threadId);
+    formData.append('file', file);
+
+    xhr.open('POST', `${API_BASE_URL}/documents/upload`);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data as Document);
+          return;
+        }
+        reject(new Error(data.detail?.message || data.detail || 'Document upload failed'));
+      } catch {
+        reject(new Error('Document upload failed'));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Document upload failed'));
+    xhr.send(formData);
+  });
 };

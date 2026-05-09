@@ -4,10 +4,13 @@ import AttachmentPreview, { type PendingAttachment } from '../components/Attachm
 import AttachmentStatusBanner from '../components/AttachmentStatusBanner';
 import AttachmentUploader from '../components/AttachmentUploader';
 import ChatMessage from '../components/ChatMessage';
+import DocumentUploader from '../components/DocumentUploader';
+import UploadedDocuments from '../components/UploadedDocuments';
 import {
   createThread,
   deleteThread,
   generateImage,
+  listDocuments,
   getThreadMessages,
   getThreads,
   logout,
@@ -15,6 +18,7 @@ import {
   sendMessage,
   updateThread,
   uploadAttachment,
+  type Document,
   type Message,
   type Thread,
 } from '../lib/api';
@@ -47,6 +51,7 @@ export default function Chat() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -129,6 +134,16 @@ export default function Chat() {
     }
   };
 
+  const loadDocuments = async (threadId: string) => {
+    try {
+      const data = await listDocuments(threadId);
+      setDocuments(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load documents';
+      setError(message);
+    }
+  };
+
   useEffect(() => {
     const bootstrap = async () => {
       try {
@@ -151,9 +166,11 @@ export default function Chat() {
   useEffect(() => {
     if (!currentThreadId) {
       setMessages([]);
+      setDocuments([]);
       return;
     }
     loadMessages(currentThreadId);
+    loadDocuments(currentThreadId);
   }, [currentThreadId]);
 
   const onCreateThread = async () => {
@@ -161,10 +178,24 @@ export default function Chat() {
       const thread = await createThread('New Chat');
       await loadThreads(thread.id);
       setMessages([]);
+      setDocuments([]);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create thread');
     }
+  };
+
+  const onDocumentUploaded = (document: Document) => {
+    setDocuments((prev) => [document, ...prev.filter((item) => item.id !== document.id)]);
+    showToast(`✅ "${document.original_filename}" ready for chat`, 'success');
+    if (currentThreadId) {
+      void loadDocuments(currentThreadId);
+    }
+  };
+
+  const onDocumentUploadError = (message: string) => {
+    setError(message);
+    showToast(`❌ ${message}`, 'error');
   };
 
   const ensureThreadForUpload = async () => {
@@ -385,6 +416,7 @@ export default function Chat() {
         await generateImage(message, threadId);
         await loadThreads(threadId);
         await loadMessages(threadId);
+        await loadDocuments(threadId);
         showToast('✅ Image generated successfully!', 'success');
         setError('');
       } catch (err) {
@@ -409,6 +441,7 @@ export default function Chat() {
       const result = await sendMessage(message, currentThreadId ?? undefined, uploadedAttachmentIds);
       await loadThreads(result.thread_id);
       await loadMessages(result.thread_id);
+      await loadDocuments(result.thread_id);
 
       // Remove only attachments that were actually sent with this message.
       setPendingAttachments((prev) => {
@@ -664,6 +697,18 @@ export default function Chat() {
               })
             )}
           </div>
+
+          {!sidebarCollapsed && (
+            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <DocumentUploader
+                threadId={currentThreadId}
+                disabled={sending || generatingImage || hasUploadingAttachments}
+                onUploaded={onDocumentUploaded}
+                onError={onDocumentUploadError}
+              />
+              <UploadedDocuments documents={documents} />
+            </div>
+          )}
 
           <button
             type="button"

@@ -29,6 +29,7 @@ interface ChatMessageProps {
 
 export default function ChatMessage({ userMessage, assistantResponse, attachments }: ChatMessageProps) {
   const imageResponse = parseImageResponse(assistantResponse);
+  const isRagAnswer = assistantResponse.startsWith('Answer generated from uploaded documents.');
 
   return (
     <div style={{ marginBottom: '14px' }}>
@@ -81,15 +82,28 @@ export default function ChatMessage({ userMessage, assistantResponse, attachment
           <div
             style={{
               maxWidth: '74%',
-              background: 'white',
+              background: isRagAnswer ? '#f4f8ff' : 'white',
               color: '#1e2538',
               borderRadius: '14px',
               padding: '10px 12px',
+              border: isRagAnswer ? '1px solid #c7dafb' : '1px solid transparent',
               boxShadow: '0 2px 8px rgba(20, 34, 67, 0.08)',
               textAlign: 'left',
               whiteSpace: 'pre-wrap',
             }}
           >
+            {isRagAnswer && (
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#2756b8',
+                  marginBottom: '6px',
+                }}
+              >
+                📚 RAG Answer
+              </div>
+            )}
             {assistantResponse}
           </div>
         )}
