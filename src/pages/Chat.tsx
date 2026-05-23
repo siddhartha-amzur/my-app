@@ -581,6 +581,43 @@ export default function Chat() {
             {sidebarCollapsed ? '+' : '+ New Chat'}
           </button>
 
+          {!sidebarCollapsed && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => navigate('/research')}
+                style={{
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#e5ebff',
+                  padding: '8px 10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Research
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/tictactoe')}
+                style={{
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#e5ebff',
+                  padding: '8px 10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Tic Tac Toe
+              </button>
+            </div>
+          )}
+
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {loadingThreads ? (
               !sidebarCollapsed && <span style={{ color: '#aeb7cc', fontSize: '13px' }}>Loading threads...</span>

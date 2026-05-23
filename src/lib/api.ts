@@ -93,6 +93,21 @@ export interface Document {
   created_at: string;
 }
 
+export interface TicTacToeMoveRequest {
+  board: string[];
+  human_symbol?: 'X' | 'O';
+  ai_symbol?: 'X' | 'O';
+}
+
+export interface TicTacToeMoveResponse {
+  board: string[];
+  ai_move: number | null;
+  winner: 'X' | 'O' | null;
+  is_draw: boolean;
+  game_over: boolean;
+  reasoning: string;
+}
+
 // Auth API
 export const register = async (data: RegisterData): Promise<UserResponse> => {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -354,6 +369,22 @@ export const generateImage = async (
 
   if (!response.ok) {
     throw new Error(await getErrorMessage(response, 'Image generation failed'));
+  }
+
+  return response.json();
+};
+
+export const getTicTacToeAIMove = async (payload: TicTacToeMoveRequest): Promise<TicTacToeMoveResponse> => {
+  const response = await fetch(`${API_BASE_URL}/tictactoe/ai-move`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to get AI move'));
   }
 
   return response.json();
