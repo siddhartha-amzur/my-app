@@ -1,7 +1,7 @@
-const API_BASE_URL = 'http://localhost:8000/api';
+export const API_BASE_URL = 'http://localhost:8000/api';
 export const MAX_UPLOAD_MB = 20;
 
-const getErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+export const getErrorMessage = async (response: Response, fallback: string): Promise<string> => {
   try {
     const error = await response.json();
     if (typeof error?.detail === 'string') {
@@ -106,6 +106,46 @@ export interface TicTacToeMoveResponse {
   is_draw: boolean;
   game_over: boolean;
   reasoning: string;
+}
+
+export interface MCPToolResult {
+  tool: string;
+  result: string;
+  args: Record<string, unknown>;
+  error?: boolean;
+}
+
+export interface MCPAgentRequest {
+  message: string;
+}
+
+export interface MCPAgentResponse {
+  success: boolean;
+  message: string;
+  tool_results: MCPToolResult[];
+  tools_used: string[];
+  reasoning: string;
+  error: string;
+}
+
+export interface Ticket {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  category: 'Billing' | 'Technical' | 'Login' | 'Refund' | 'General';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SupportWorkflowResponse {
+  thread_id: string;
+  assistant_response: string;
+  workflow_status: string;
+  workflow_step: string;
+  ticket?: Ticket | null;
 }
 
 // Auth API
@@ -283,6 +323,82 @@ export const deleteThread = async (threadId: string): Promise<void> => {
   }
 };
 
+export const createTicket = async (payload: {
+  title: string;
+  description: string;
+  category?: Ticket['category'];
+  priority?: Ticket['priority'];
+  thread_id?: string;
+  send_email_notification?: boolean;
+}): Promise<Ticket> => {
+  const response = await fetch(`${API_BASE_URL}/tickets/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to create ticket'));
+  }
+
+  return response.json();
+};
+
+export const updateTicket = async (payload: {
+  ticket_id: string;
+  status?: string;
+  category?: Ticket['category'];
+  priority?: Ticket['priority'];
+  note?: string;
+  send_email_notification?: boolean;
+}): Promise<Ticket> => {
+  const response = await fetch(`${API_BASE_URL}/tickets/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to update ticket'));
+  }
+
+  return response.json();
+};
+
+export const getTicket = async (ticketId: string): Promise<Ticket> => {
+  const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to fetch ticket'));
+  }
+
+  return response.json();
+};
+
+export const runSupportWorkflow = async (payload: {
+  message: string;
+  thread_id?: string;
+  ticket_id?: string;
+}): Promise<SupportWorkflowResponse> => {
+  const response = await fetch(`${API_BASE_URL}/workflows/support`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Support workflow failed'));
+  }
+
+  return response.json();
+};
+
 export const uploadAttachment = (
   file: File,
   threadId: string,
@@ -440,4 +556,30 @@ export const uploadDocument = (
     xhr.onerror = () => reject(new Error('Document upload failed'));
     xhr.send(formData);
   });
+};
+
+export const sendMCPAgentMessage = async (message: string): Promise<MCPAgentResponse> => {
+  const response = await fetch(`${API_BASE_URL}/mcp/agent/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Agent request failed'));
+  }
+
+  return response.json();
+};
+
+export const getMCPTools = async (): Promise<any[]> => {
+  const response = await fetch(`${API_BASE_URL}/mcp/tools`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to fetch tools'));
+  }
+
+  return response.json();
 };

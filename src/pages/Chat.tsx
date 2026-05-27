@@ -6,6 +6,7 @@ import AttachmentUploader from '../components/AttachmentUploader';
 import ChatMessage from '../components/ChatMessage';
 import DocumentUploader from '../components/DocumentUploader';
 import UploadedDocuments from '../components/UploadedDocuments';
+import SupportQuickActions from '../components/chat/SupportQuickActions';
 import {
   createThread,
   deleteThread,
@@ -15,6 +16,7 @@ import {
   getThreads,
   logout,
   MAX_UPLOAD_MB,
+  runSupportWorkflow,
   sendMessage,
   updateThread,
   uploadAttachment,
@@ -47,6 +49,18 @@ function isImagePrompt(text: string): boolean {
   return /^\s*(generate|create|draw|make|paint|design|render|produce|show me|give me)\b/i.test(text);
 }
 
+function isSupportIntent(text: string): boolean {
+  return /(ticket|support|refund|billing|payment failed|login issue|check my ticket|ticket status|update my ticket|priority)/i.test(text);
+}
+
+function getSupportTicketMemory(threadId: string): string | null {
+  return localStorage.getItem(`support:lastTicket:${threadId}`);
+}
+
+function setSupportTicketMemory(threadId: string, ticketId: string): void {
+  localStorage.setItem(`support:lastTicket:${threadId}`, ticketId);
+}
+
 export default function Chat() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
@@ -57,6 +71,8 @@ export default function Chat() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [workflowRunning, setWorkflowRunning] = useState(false);
+  const [workflowStep, setWorkflowStep] = useState('idle');
   const [savingTitle, setSavingTitle] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [error, setError] = useState('');
@@ -388,7 +404,61 @@ export default function Chat() {
       return;
     }
 
-    if ((!message && uploadedAttachmentIds.length === 0) || sending || generatingImage) {
+    if ((!message && uploadedAttachmentIds.length === 0) || sending || generatingImage || workflowRunning) {
+      return;
+    }
+
+    // Route support-ticket intents to sidecar workflow endpoint.
+    if (message && uploadedAttachmentIds.length === 0 && isSupportIntent(message)) {
+      let threadId = currentThreadId;
+      if (!threadId) {
+        try {
+          const thread = await createThread('Support Ticket');
+          await loadThreads(thread.id);
+          setCurrentThreadId(thread.id);
+          threadId = thread.id;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create thread');
+          return;
+        }
+      }
+
+      setWorkflowRunning(true);
+      setWorkflowStep('classification');
+      setInputValue('');
+
+      try {
+        const rememberedTicketId = getSupportTicketMemory(threadId);
+        setWorkflowStep('workflow_trigger');
+        const result = await runSupportWorkflow({
+          message,
+          thread_id: threadId,
+          ticket_id: rememberedTicketId ?? undefined,
+        });
+        setWorkflowStep('sync_messages');
+
+        await loadThreads(result.thread_id);
+        await loadMessages(result.thread_id);
+        await loadDocuments(result.thread_id);
+
+        if (result.ticket?.id) {
+          setSupportTicketMemory(result.thread_id, result.ticket.id);
+        }
+
+        showToast('✅ Support workflow completed', 'success');
+        setError('');
+      } catch (err) {
+        const messageText = err instanceof Error ? err.message : 'Support workflow failed';
+        if (messageText.includes('401')) {
+          navigate('/login');
+          return;
+        }
+        setError(messageText);
+        showToast(`❌ ${messageText}`, 'error');
+      } finally {
+        setWorkflowRunning(false);
+        setWorkflowStep('idle');
+      }
       return;
     }
 
@@ -486,7 +556,12 @@ export default function Chat() {
   };
 
   const hasAnyAttachments = pendingAttachments.some((item) => item.status === 'uploading' || item.status === 'uploaded');
-  const canSend = (inputValue.trim().length > 0 || uploadedAttachmentIds.length > 0 || hasAnyAttachments) && !sending && !generatingImage;
+  const canSend = (inputValue.trim().length > 0 || uploadedAttachmentIds.length > 0 || hasAnyAttachments) && !sending && !generatingImage && !workflowRunning;
+
+  const onSupportQuickAction = (message: string) => {
+    setInputValue(message);
+    setError('');
+  };
 
   return (
     <div
@@ -582,7 +657,7 @@ export default function Chat() {
           </button>
 
           {!sidebarCollapsed && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
               <button
                 type="button"
                 onClick={() => navigate('/research')}
@@ -614,6 +689,22 @@ export default function Chat() {
                 }}
               >
                 Tic Tac Toe
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/mcp-agent')}
+                style={{
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#e5ebff',
+                  padding: '8px 10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                MCP Agent
               </button>
             </div>
           )}
@@ -800,6 +891,9 @@ export default function Chat() {
                   userMessage={item.message}
                   assistantResponse={item.response}
                   attachments={item.attachments}
+                  onRetryTicket={() => {
+                    setInputValue(item.message);
+                  }}
                 />
               ))
             )}
@@ -833,6 +927,24 @@ export default function Chat() {
               <div style={{ color: '#687086', textAlign: 'left', fontSize: '13px' }}>Generating response...</div>
             )}
 
+            {workflowRunning && (
+              <div
+                style={{
+                  color: '#2d3b5f',
+                  textAlign: 'left',
+                  fontSize: '13px',
+                  background: '#edf2ff',
+                  border: '1px solid #c7d6fb',
+                  borderRadius: '10px',
+                  padding: '8px 10px',
+                  marginTop: '8px',
+                  display: 'inline-block',
+                }}
+              >
+                Running support workflow: <strong>{workflowStep}</strong>
+              </div>
+            )}
+
             <div ref={endRef} />
           </div>
 
@@ -855,9 +967,13 @@ export default function Chat() {
 
             <AttachmentStatusBanner items={pendingAttachments} />
             <AttachmentPreview items={pendingAttachments} onRemove={onRemoveAttachment} onRetry={onRetryAttachment} />
+            <SupportQuickActions
+              disabled={sending || generatingImage || workflowRunning || hasUploadingAttachments}
+              onSelect={onSupportQuickAction}
+            />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '8px' }}>
-              <AttachmentUploader disabled={sending} onFilesSelected={onFilesSelected} />
+              <AttachmentUploader disabled={sending || workflowRunning} onFilesSelected={onFilesSelected} />
               <input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -868,7 +984,7 @@ export default function Chat() {
                   }
                 }}
                 placeholder="Type your message or upload attachments..."
-                disabled={sending}
+                disabled={sending || workflowRunning}
                 style={{
                   border: '1px solid #d6dae5',
                   borderRadius: '10px',
@@ -879,19 +995,19 @@ export default function Chat() {
               <button
                 type="button"
                 onClick={onSend}
-                disabled={sending || generatingImage || !canSend}
+                disabled={sending || generatingImage || workflowRunning || !canSend}
                 style={{
                   border: 'none',
                   borderRadius: '10px',
                   padding: '0 16px',
-                  background: (sending || generatingImage) ? '#b8bfd2' : !canSend ? '#b8bfd2' : hasUploadingAttachments ? '#7986cb' : '#2749b3',
+                  background: (sending || generatingImage || workflowRunning) ? '#b8bfd2' : !canSend ? '#b8bfd2' : hasUploadingAttachments ? '#7986cb' : '#2749b3',
                   color: 'white',
-                  cursor: (sending || generatingImage || !canSend) ? 'not-allowed' : 'pointer',
+                  cursor: (sending || generatingImage || workflowRunning || !canSend) ? 'not-allowed' : 'pointer',
                   fontWeight: 600,
                   fontSize: '14px',
                 }}
               >
-                {generatingImage ? '🖼️' : sending ? '...' : hasUploadingAttachments ? '⏳' : 'Send'}
+                {workflowRunning ? '⚙️' : generatingImage ? '🖼️' : sending ? '...' : hasUploadingAttachments ? '⏳' : 'Send'}
               </button>
             </div>
           </div>

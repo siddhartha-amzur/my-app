@@ -4,6 +4,7 @@ import Register from './pages/Register';
 import Chat from './pages/Chat';
 import Research from './pages/Research';
 import TicTacToe from './pages/TicTacToe';
+import MCPAgent from './pages/MCPAgent';
 import './App.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
         <Route path="/chat" element={<Chat />} />
         <Route path="/research" element={<Research />} />
         <Route path="/tictactoe" element={<TicTacToe />} />
+        <Route path="/mcp-agent" element={<MCPAgent />} />
       </Routes>
     </BrowserRouter>
   );

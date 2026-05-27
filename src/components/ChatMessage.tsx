@@ -4,7 +4,9 @@ import GeneratedImage from './GeneratedImage';
 import { getAttachmentUrl, type Attachment } from '../lib/api';
 import SQLQueryCard from './chat/SQLQueryCard';
 import SQLResultTable from './chat/SQLResultTable';
+import TicketCard from './chat/TicketCard';
 import type { QueryResult } from '../types/sql';
+import type { Ticket } from '../lib/api';
 
 export interface ParsedImageResponse {
   type: 'image_generation';
@@ -30,6 +32,14 @@ export interface ParsedSQLResponse {
   source_type?: string;
 }
 
+export interface ParsedTicketResponse {
+  message_type: 'ticket_result';
+  assistant_response: string;
+  workflow_status: string;
+  workflow_step: string;
+  ticket?: Ticket;
+}
+
 export function parseImageResponse(response: string): ParsedImageResponse | null {
   try {
     const parsed = JSON.parse(response);
@@ -50,11 +60,22 @@ export function parseSQLResponse(response: string): ParsedSQLResponse | null {
   return null;
 }
 
+export function parseTicketResponse(response: string): ParsedTicketResponse | null {
+  try {
+    const parsed = JSON.parse(response);
+    if (parsed && parsed.message_type === 'ticket_result') {
+      return parsed as ParsedTicketResponse;
+    }
+  } catch { /* not JSON */ }
+  return null;
+}
+
 interface ChatMessageProps {
   userMessage: string;
   assistantResponse: string;
   attachments?: Attachment[];
   onRetrySql?: (question: string) => void;
+  onRetryTicket?: () => void;
 }
 
 /** Renders assistant text as styled markdown with clickable links. */
@@ -138,9 +159,10 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-export default function ChatMessage({ userMessage, assistantResponse, attachments, onRetrySql }: ChatMessageProps) {
+export default function ChatMessage({ userMessage, assistantResponse, attachments, onRetrySql, onRetryTicket }: ChatMessageProps) {
   const imageResponse = parseImageResponse(assistantResponse);
   const sqlResponse = parseSQLResponse(assistantResponse);
+  const ticketResponse = parseTicketResponse(assistantResponse);
   const isRagAnswer = assistantResponse.startsWith('Answer generated from uploaded documents.');
 
   const sqlColumns = sqlResponse?.columns?.length
@@ -212,6 +234,30 @@ export default function ChatMessage({ userMessage, assistantResponse, attachment
               onRetry={onRetrySql ? () => onRetrySql(sqlResponse.question || userMessage) : undefined}
             />
             <SQLResultTable result={sqlResult} />
+          </div>
+        ) : ticketResponse?.ticket ? (
+          <div style={{ width: '100%', maxWidth: '100%' }}>
+            <TicketCard
+              ticket={ticketResponse.ticket}
+              workflowStatus={ticketResponse.workflow_status}
+              workflowStep={ticketResponse.workflow_step}
+              onRetry={onRetryTicket}
+            />
+            <div
+              style={{
+                marginTop: '8px',
+                maxWidth: '74%',
+                background: '#f7f9ff',
+                border: '1px solid #dbe4fb',
+                color: '#2d3b5f',
+                borderRadius: '12px',
+                padding: '10px 12px',
+                fontSize: '13px',
+                lineHeight: 1.5,
+              }}
+            >
+              {ticketResponse.assistant_response}
+            </div>
           </div>
         ) : (
           <div style={{
